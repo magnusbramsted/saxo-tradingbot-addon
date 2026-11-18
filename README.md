@@ -1,0 +1,1 @@
+# saxo-tradingbot-addon
