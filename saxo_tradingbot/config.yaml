@@ -1,5 +1,5 @@
 name: Saxo tradingbot
-version: "0.2.0"
+version: "0.2.1"
 slug: saxo_tradingbot
 description: Swing (RSI2) + daytrading (VWAP-dip) mod Saxo OpenAPI (simulering) med sensorer i Home Assistant.
 arch:

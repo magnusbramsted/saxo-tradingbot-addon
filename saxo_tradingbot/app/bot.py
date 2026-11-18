@@ -129,6 +129,10 @@ class Bot:
         """candidates: [(sorteringsnøgle, sym, inst, pris, årsag)]. Åbner så mange som der er plads til."""
         b, maxpos = self.book(name), self.cfg["max_positions" if name == "swing" else "day_max_positions"]
         free = maxpos - len(b["positions"])
+        skip = self.excluded()
+        for c in [c for c in candidates if c[1].split(":")[0].lower() in skip]:
+            out.append("%s: springes over (nyhedsfilter)" % c[1])
+        candidates = [c for c in candidates if c[1].split(":")[0].lower() not in skip]
         for _, sym, inst, price, reason in sorted(candidates)[:max(free, 0)]:
             fx = self.fx.get(inst["currency"], 1.0)
             slot = min(self.equity(name) / maxpos, b["cash_dkk"])
@@ -314,6 +318,22 @@ class Bot:
             urllib.request.urlopen(req, timeout=10).read()
         except Exception as e:  # HA-fejl må aldrig stoppe botten
             log.warning("HA-kald fejlede: %s", e)
+
+    def excluded(self):
+        """Tickers fra input_text.tradingbot_udeluk (kommasepareret, fx 'NOVOb,AAPL'), som ikke må købes i dag."""
+        token = os.environ.get("SUPERVISOR_TOKEN")
+        if not token:
+            return set()
+        req = urllib.request.Request("http://supervisor/core/api/states/input_text.tradingbot_udeluk",
+                                     headers={"Authorization": "Bearer " + token})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                val = json.load(r).get("state", "")
+        except Exception:
+            return set()
+        if val in ("", "unknown", "unavailable", "ingen"):
+            return set()
+        return {t.strip().split(":")[0].lower() for t in val.split(",") if t.strip()}
 
     def notify(self, title, msg):
         svc = (self.cfg.get("notify_service") or "").strip()
