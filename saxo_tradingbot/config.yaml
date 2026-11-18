@@ -1,7 +1,7 @@
 name: Saxo tradingbot
-version: "0.1.0"
+version: "0.2.0"
 slug: saxo_tradingbot
-description: Daglig RSI(2)-pullback-bot mod Saxo OpenAPI (simulering) med sensorer i Home Assistant.
+description: Swing (RSI2) + daytrading (VWAP-dip) mod Saxo OpenAPI (simulering) med sensorer i Home Assistant.
 arch:
   - aarch64
   - amd64
@@ -17,7 +17,14 @@ options:
   app_key: ""
   environment: sim
   trade_enabled: true
+  swing_enabled: true
+  day_enabled: true
   budget_dkk: 10000
+  day_budget_dkk: 10000
+  day_max_positions: 2
+  day_vwap_dip_pct: 1.0
+  day_stop_pct: 1.0
+  day_max_trades: 6
   max_positions: 2
   rsi_entry: 10
   sma_trend: 200
@@ -52,7 +59,14 @@ schema:
   app_key: password
   environment: list(sim)
   trade_enabled: bool
+  swing_enabled: bool
+  day_enabled: bool
   budget_dkk: int(1000,)
+  day_budget_dkk: int(1000,)
+  day_max_positions: int(1,10)
+  day_vwap_dip_pct: float(0.1,10)
+  day_stop_pct: float(0.1,10)
+  day_max_trades: int(1,50)
   max_positions: int(1,10)
   rsi_entry: int(1,50)
   sma_trend: int(20,300)
