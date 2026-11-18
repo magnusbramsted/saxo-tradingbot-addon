@@ -153,9 +153,9 @@ class Saxo:
                         "exchange": d.get("ExchangeId"), "name": d.get("Description")}
         raise SaxoError("Instrument ikke fundet: " + symbol)
 
-    def daily_closes(self, uic, count=260):
-        """Dagslys (seneste bar kan være dagens, ufuldstændige). Returnerer [(dato, close)]."""
-        params = {"AssetType": "Stock", "Uic": uic, "Horizon": 1440, "Count": count}
+    def bars(self, uic, horizon=1440, count=260):
+        """Lys fra chart-API. Returnerer [{time, open, high, low, close, volume}] (tid i UTC-ISO)."""
+        params = {"AssetType": "Stock", "Uic": uic, "Horizon": horizon, "Count": count}
         try:
             res = self.request("GET", "/chart/v3/charts", params)
         except SaxoError:
@@ -163,9 +163,24 @@ class Saxo:
         out = []
         for b in res.get("Data", []):
             close = b.get("Close", b.get("CloseBid"))
-            if close is not None:
-                out.append((b["Time"][:10], float(close)))
+            if close is None:
+                continue
+            out.append({"time": b["Time"], "close": float(close),
+                        "open": float(b.get("Open", b.get("OpenBid", close))),
+                        "high": float(b.get("High", b.get("HighBid", close))),
+                        "low": float(b.get("Low", b.get("LowBid", close))),
+                        "volume": float(b.get("Volume") or 0)})
         return out
+
+    def daily_closes(self, uic, count=260):
+        """Dagslys (seneste bar kan være dagens, ufuldstændige). Returnerer [(dato, close)]."""
+        return [(b["time"][:10], b["close"]) for b in self.bars(uic, 1440, count)]
+
+    def data_delay(self, account_key, uic):
+        """Minutters forsinkelse på kurser (0 = realtid), eller None hvis ukendt."""
+        res = self.request("GET", "/trade/v1/infoprices", {
+            "AccountKey": account_key, "Uic": uic, "AssetType": "Stock", "FieldGroups": "Quote"})
+        return res.get("Quote", {}).get("DelayedByMinutes")
 
     def place_market_order(self, account_key, uic, buy, amount):
         return self.request("POST", "/trade/v2/orders", body={

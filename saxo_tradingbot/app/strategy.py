@@ -59,3 +59,39 @@ def commission_dkk(value_ccy, ccy, fx):
     if ccy != "DKK":
         fee += 0.0025 * value_ccy * fx
     return fee
+
+
+# ---------- daytrading (VWAP-dip) ----------
+def vwap(bars):
+    """bars: liste af dicts med high/low/close/volume for dagens 5-min-lys."""
+    pv = vol = 0.0
+    for b in bars:
+        v = b.get("volume") or 0
+        pv += (b["high"] + b["low"] + b["close"]) / 3 * v
+        vol += v
+    if vol > 0:
+        return pv / vol
+    return sum(b["close"] for b in bars) / len(bars) if bars else None
+
+
+def day_entry_signal(bars, daily_closes, cfg):
+    """Køb når kursen er dip_pct under dagens VWAP, 5-min RSI(2) < 10 og aktien er over SMA50 (dag)."""
+    if len(bars) < 6:
+        return False, None
+    trend = sma(daily_closes, 50)
+    v = vwap(bars)
+    price = bars[-1]["close"]
+    r = rsi([b["close"] for b in bars], 2)
+    dev = (price / v - 1) * 100
+    ok = (trend is not None and price > trend and dev <= -cfg["day_vwap_dip_pct"]
+          and r is not None and r < 10)
+    return ok, dev
+
+
+def day_exit_reason(bars, position, cfg):
+    price = bars[-1]["close"]
+    if price <= position["entry_price"] * (1 - cfg["day_stop_pct"] / 100):
+        return "stop"
+    if price >= vwap(bars):
+        return "tilbage ved VWAP"
+    return None
