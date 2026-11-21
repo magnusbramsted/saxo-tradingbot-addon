@@ -203,6 +203,16 @@ class Bot:
                 else:
                     out.append("%s: hold" % sym)
             elif not force_close:
+                close_h, close_m = SESSIONS[exchange_of(sym)][2]
+                now_l = dt.datetime.now(tz)
+                cutoff = now_l.replace(hour=close_h, minute=close_m, second=0, microsecond=0) \
+                    - dt.timedelta(minutes=cfg.get("day_entry_cutoff_min", 60))
+                if place_orders and now_l >= cutoff:
+                    out.append("%s: ingen nye køb i sidste time" % sym)
+                    continue
+                if sym in b.get("stopped", {}).get(today, []):
+                    out.append("%s: stoppet ud i dag – køber ikke igen" % sym)
+                    continue
                 ok, dev = day_entry_signal(bars, self.daily(sym, inst["uic"]), cfg)
                 out.append("%s: %s fra VWAP %s" % (sym, "-" if dev is None else "%+.2f %%" % dev,
                                                     "KØBSSIGNAL" if ok else ""))
@@ -244,6 +254,8 @@ class Bot:
             b["cash_dkk"] += proceeds
             pnl = proceeds - pos["entry_cost_dkk"]
             text += ", resultat %+.0f kr." % pnl
+            if name == "day" and reason == "stop":
+                b["stopped"] = {today: b.get("stopped", {}).get(today, []) + [sym]}
         b["trades"] = (b["trades"] + [{
             "time": dt.datetime.now().isoformat(timespec="minutes"), "text": text, "pnl": pnl}])[-100:]
         log.info(text)
@@ -269,7 +281,9 @@ class Bot:
                 jobs.append(("swing", ex, syms))
             if not self.cfg.get("day_enabled", True):
                 continue
-            if opened + dt.timedelta(minutes=30) <= now < close - dt.timedelta(minutes=15):
+            if ex not in self.cfg.get("day_exchanges", ["xcse"]):
+                pass
+            elif opened + dt.timedelta(minutes=30) <= now < close - dt.timedelta(minutes=15):
                 bucket = "%sT%02d:%d" % (day, now.hour, now.minute // 5)
                 if self.state["day_slot"].get(ex) != bucket:
                     jobs.append(("day", ex, syms))

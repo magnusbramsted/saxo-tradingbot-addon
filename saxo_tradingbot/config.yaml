@@ -1,5 +1,5 @@
 name: Saxo tradingbot
-version: "0.2.1"
+version: "0.2.2"
 slug: saxo_tradingbot
 description: Swing (RSI2) + daytrading (VWAP-dip) mod Saxo OpenAPI (simulering) med sensorer i Home Assistant.
 arch:
@@ -21,7 +21,10 @@ options:
   day_enabled: true
   budget_dkk: 10000
   day_budget_dkk: 10000
-  day_max_positions: 2
+  day_max_positions: 1
+  day_entry_cutoff_min: 60
+  day_exchanges:
+    - xcse
   day_vwap_dip_pct: 1.0
   day_stop_pct: 1.0
   day_max_trades: 6
@@ -64,6 +67,9 @@ schema:
   budget_dkk: int(1000,)
   day_budget_dkk: int(1000,)
   day_max_positions: int(1,10)
+  day_entry_cutoff_min: int(0,240)
+  day_exchanges:
+    - str
   day_vwap_dip_pct: float(0.1,10)
   day_stop_pct: float(0.1,10)
   day_max_trades: int(1,50)
