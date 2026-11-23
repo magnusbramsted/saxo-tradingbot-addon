@@ -28,7 +28,7 @@ SESSIONS = {
     "xetr": ("Europe/Berlin", (9, 0), (17, 30)), "xnas": ("America/New_York", (9, 30), (16, 0)),
     "xnys": ("America/New_York", (9, 30), (16, 0)),
 }
-BOOKS = {"swing": "Swing", "day": "Daytrading"}
+BOOKS = {"core": "Kerne", "swing": "Swing", "day": "Daytrading"}
 LOCK = threading.RLock()
 
 
@@ -65,6 +65,7 @@ class Bot:
             books["swing"] = {k: st.pop(k) for k in ("start_dkk", "cash_dkk", "positions", "trades") if k in st}
         books.setdefault("swing", new_book(cfg["budget_dkk"]))
         books.setdefault("day", new_book(cfg["day_budget_dkk"]))
+        books.setdefault("core", new_book(cfg.get("core_budget_dkk", 10000)))
         books["day"].setdefault("trades_today", {})
         for k in ("instruments", "last_run", "prices", "day_slot", "day_flat"):
             st.setdefault(k, {})
@@ -107,6 +108,12 @@ class Bot:
                     self.state["instruments"][sym] = self.saxo.find_instrument(sym)
                 except SaxoError as e:
                     log.warning("%s", e)
+        core = self.cfg.get("core_symbol")
+        if core and core not in self.state["instruments"]:
+            try:
+                self.state["instruments"][core] = self.saxo.find_instrument(core, "Etf")
+            except SaxoError as e:
+                log.warning("Kerne-ETF: %s", e)
         today = dt.date.today().isoformat()
         if self.state.get("delay_checked") != today and self.state["instruments"]:
             try:
@@ -169,12 +176,36 @@ class Bot:
                     out.append(self.trade("swing", sym, inst, False, pos["qty"], closes[-1], reason, place_orders))
                 else:
                     out.append("%s: hold (dag %d)" % (sym, held))
+            elif exchange_of(sym) not in cfg.get("swing_exchanges", ["xcse"]):
+                out.append("%s: kun salg (uden for swing-børser)" % sym)
             else:
                 ok, r = entry_signal(closes, cfg)
                 out.append("%s: RSI2=%s %s" % (sym, "-" if r is None else "%.1f" % r, "KØBSSIGNAL" if ok else ""))
                 if ok:
                     candidates.append((r, sym, inst, closes[-1], "RSI2 %.1f" % r))
         self.open_entries("swing", candidates, place_orders, out)
+        self.save()
+        return out
+
+    # ---------- kerne (køb og hold) ----------
+    def evaluate_core(self, place_orders=True):
+        sym = self.cfg.get("core_symbol")
+        inst = self.state["instruments"].get(sym)
+        if not inst:
+            return ["Kerne-ETF ikke fundet"]
+        bars = self.saxo.daily_closes(inst["uic"], 5, inst.get("asset_type", "Etf"))
+        if not bars:
+            return ["Kerne: ingen kurser"]
+        price = bars[-1][1]
+        self.state["prices"][sym] = price
+        b, out = self.book("core"), []
+        if sym not in b["positions"]:
+            fx = self.fx.get(inst["currency"], 1.0)
+            qty = math.floor(b["cash_dkk"] * 0.99 / (price * fx))
+            if qty >= 1:
+                out.append(self.trade("core", sym, inst, True, qty, price, "køb og hold", place_orders))
+        else:
+            out.append("Kerne: hold %s" % sym)
         self.save()
         return out
 
@@ -247,7 +278,7 @@ class Bot:
             return "[signal] " + text
         if not self.cfg.get("trade_enabled", True):
             return "[handel slået fra] " + text
-        self.saxo.place_market_order(self.account_key, inst["uic"], buy, qty)
+        self.saxo.place_market_order(self.account_key, inst["uic"], buy, qty, inst.get("asset_type", "Stock"))
         today = dt.date.today().isoformat()
         if buy:
             b["cash_dkk"] -= value * fx + fee
@@ -278,6 +309,14 @@ class Bot:
         for sym in self.cfg["universe"]:
             if exchange_of(sym) in SESSIONS:
                 by_ex.setdefault(exchange_of(sym), []).append(sym)
+        core = self.cfg.get("core_symbol")
+        if core and exchange_of(core) in SESSIONS:
+            tzname, _, (ch, cm) = SESSIONS[exchange_of(core)]
+            now = dt.datetime.now(ZoneInfo(tzname))
+            close = now.replace(hour=ch, minute=cm, second=0, microsecond=0)
+            if now.weekday() < 5 and close - dt.timedelta(minutes=15) <= now <= close - dt.timedelta(minutes=5) \
+                    and self.state["last_run"].get("core") != now.date().isoformat():
+                jobs.append(("core", exchange_of(core), [core]))
         for ex, syms in by_ex.items():
             tzname, (oh, om), (ch, cm) = SESSIONS[ex]
             now = dt.datetime.now(ZoneInfo(tzname))
@@ -311,7 +350,10 @@ class Bot:
                 for kind, ex, syms in self.schedule():
                     tzname = SESSIONS[ex][0]
                     now = dt.datetime.now(ZoneInfo(tzname))
-                    if kind == "swing":
+                    if kind == "core":
+                        lines = self.evaluate_core()
+                        self.state["last_run"]["core"] = now.date().isoformat()
+                    elif kind == "swing":
                         lines = self.evaluate_swing(syms)
                         self.state["last_run"][ex] = now.date().isoformat()
                     elif kind == "day":
@@ -321,7 +363,7 @@ class Bot:
                         lines = self.evaluate_day(syms, force_close=True) if syms else []
                         self.state["day_flat"][ex] = now.date().isoformat()
                     for line in lines:
-                        if "KØB" in line or "SÆLG" in line or kind == "swing":
+                        if "KØB" in line or "SÆLG" in line or kind in ("swing", "core"):
                             log.info(line)
                     self.save()
             except SaxoError as e:
