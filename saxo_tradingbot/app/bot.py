@@ -73,6 +73,7 @@ class Bot:
         self.account_key = None
         self.login_notified = False
         self.daily_cache = {}
+        self.last_day_scan = None
         self.fx = {"DKK": 1.0, "USD": float(cfg["usd_dkk"]), "EUR": float(cfg["eur_dkk"])}
 
     # ---------- hjælpere ----------
@@ -179,7 +180,7 @@ class Bot:
 
     # ---------- daytrading ----------
     def evaluate_day(self, symbols, force_close=False, place_orders=True):
-        cfg, out, candidates = self.cfg, [], []
+        cfg, out, candidates, devs = self.cfg, [], [], []
         b = self.book("day")
         today = dt.date.today().isoformat()
         for sym in symbols:
@@ -214,10 +215,18 @@ class Bot:
                     out.append("%s: stoppet ud i dag – køber ikke igen" % sym)
                     continue
                 ok, dev = day_entry_signal(bars, self.daily(sym, inst["uic"]), cfg)
+                if dev is not None:
+                    devs.append((dev, sym.split(":")[0]))
                 out.append("%s: %s fra VWAP %s" % (sym, "-" if dev is None else "%+.2f %%" % dev,
                                                     "KØBSSIGNAL" if ok else ""))
                 if ok:
                     candidates.append((dev, sym, inst, price, "%.2f %% under VWAP" % -dev))
+        if place_orders and not force_close:
+            near = min(devs) if devs else None
+            self.last_day_scan = "%s · %d aktier · %d signaler%s" % (
+                dt.datetime.now().strftime("%H:%M"), len(symbols), len(candidates),
+                " · tættest: %s %+.2f %%" % (near[1], near[0]) if near else "")
+            log.info("Daytrading-tjek %s", self.last_day_scan)
         if candidates and b["trades_today"].get(today, 0) >= cfg["day_max_trades"]:
             out.append("Dagens maks. %d handler er nået" % cfg["day_max_trades"])
         elif candidates:
@@ -359,7 +368,7 @@ class Bot:
             self.ha("POST", "/states/sensor.tradingbot_" + key, {"state": state, "attributes": attrs})
 
         put("status", self.status, friendly_name="Tradingbot status", icon="mdi:robot",
-            kursforsinkelse_min=self.state.get("data_delay"))
+            kursforsinkelse_min=self.state.get("data_delay"), seneste_daytrading_tjek=self.last_day_scan)
         for name, label in BOOKS.items():
             b, eq = self.book(name), self.equity(name)
             closed = [t["pnl"] for t in b["trades"] if t.get("pnl") is not None]
