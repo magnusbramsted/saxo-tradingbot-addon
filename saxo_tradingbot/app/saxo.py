@@ -143,19 +143,20 @@ class Saxo:
     def client(self):
         return self.request("GET", "/port/v1/clients/me")
 
-    def find_instrument(self, symbol):
+    def find_instrument(self, symbol, asset_type="Stock"):
         """symbol i Saxo-format, fx 'NOVOb:xcse' eller 'AAPL:xnas'."""
         res = self.request("GET", "/ref/v1/instruments",
-                           {"Keywords": symbol, "AssetTypes": "Stock"})
+                           {"Keywords": symbol, "AssetTypes": asset_type})
         for d in res.get("Data", []):
             if d.get("Symbol", "").lower() == symbol.lower():
                 return {"uic": d["Identifier"], "currency": d.get("CurrencyCode"),
-                        "exchange": d.get("ExchangeId"), "name": d.get("Description")}
+                        "exchange": d.get("ExchangeId"), "name": d.get("Description"),
+                        "asset_type": d.get("AssetType", asset_type)}
         raise SaxoError("Instrument ikke fundet: " + symbol)
 
-    def bars(self, uic, horizon=1440, count=260):
+    def bars(self, uic, horizon=1440, count=260, asset_type="Stock"):
         """Lys fra chart-API. Returnerer [{time, open, high, low, close, volume}] (tid i UTC-ISO)."""
-        params = {"AssetType": "Stock", "Uic": uic, "Horizon": horizon, "Count": count}
+        params = {"AssetType": asset_type, "Uic": uic, "Horizon": horizon, "Count": count}
         try:
             res = self.request("GET", "/chart/v3/charts", params)
         except SaxoError:
@@ -172,9 +173,9 @@ class Saxo:
                         "volume": float(b.get("Volume") or 0)})
         return out
 
-    def daily_closes(self, uic, count=260):
+    def daily_closes(self, uic, count=260, asset_type="Stock"):
         """Dagslys (seneste bar kan være dagens, ufuldstændige). Returnerer [(dato, close)]."""
-        return [(b["time"][:10], b["close"]) for b in self.bars(uic, 1440, count)]
+        return [(b["time"][:10], b["close"]) for b in self.bars(uic, 1440, count, asset_type)]
 
     def data_delay(self, account_key, uic):
         """Minutters forsinkelse på kurser (0 = realtid), eller None hvis ukendt."""
@@ -182,9 +183,9 @@ class Saxo:
             "AccountKey": account_key, "Uic": uic, "AssetType": "Stock", "FieldGroups": "Quote"})
         return res.get("Quote", {}).get("DelayedByMinutes")
 
-    def place_market_order(self, account_key, uic, buy, amount):
+    def place_market_order(self, account_key, uic, buy, amount, asset_type="Stock"):
         return self.request("POST", "/trade/v2/orders", body={
-            "AccountKey": account_key, "Uic": uic, "AssetType": "Stock",
+            "AccountKey": account_key, "Uic": uic, "AssetType": asset_type,
             "BuySell": "Buy" if buy else "Sell", "Amount": amount,
             "OrderType": "Market", "OrderDuration": {"DurationType": "DayOrder"},
             "ManualOrder": False,

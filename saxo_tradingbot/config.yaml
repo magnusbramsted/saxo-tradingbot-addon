@@ -1,7 +1,7 @@
 name: Saxo tradingbot
-version: "0.2.3"
+version: "0.3.0"
 slug: saxo_tradingbot
-description: Swing (RSI2) + daytrading (VWAP-dip) mod Saxo OpenAPI (simulering) med sensorer i Home Assistant.
+description: Kerne-ETF + swing (RSI2) + daytrading (VWAP-dip) mod Saxo OpenAPI (simulering) med sensorer i Home Assistant.
 arch:
   - aarch64
   - amd64
@@ -19,7 +19,11 @@ options:
   trade_enabled: true
   swing_enabled: true
   day_enabled: true
+  core_symbol: EUNL:xetr
+  core_budget_dkk: 10000
   budget_dkk: 10000
+  swing_exchanges:
+    - xcse
   day_budget_dkk: 10000
   day_max_positions: 1
   day_entry_cutoff_min: 60
@@ -28,7 +32,7 @@ options:
   day_vwap_dip_pct: 1.0
   day_stop_pct: 1.0
   day_max_trades: 6
-  max_positions: 2
+  max_positions: 1
   rsi_entry: 10
   sma_trend: 200
   sma_exit: 5
@@ -64,7 +68,11 @@ schema:
   trade_enabled: bool
   swing_enabled: bool
   day_enabled: bool
+  core_symbol: str?
+  core_budget_dkk: int(1000,)
   budget_dkk: int(1000,)
+  swing_exchanges:
+    - str
   day_budget_dkk: int(1000,)
   day_max_positions: int(1,10)
   day_entry_cutoff_min: int(0,240)
